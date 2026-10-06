@@ -1,0 +1,50 @@
+{
+  "realm": "faculty-portal",
+  "enabled": true,
+  "displayName": "Faculty Portal Demo",
+  "registrationAllowed": false,
+  "resetPasswordAllowed": false,
+  "roles": {
+    "realm": [
+      { "name": "FACULTY", "description": "Faculty member" },
+      { "name": "HOD", "description": "Head of department" },
+      { "name": "ADMIN", "description": "Portal administrator" },
+      { "name": "CLASS_ADVISOR", "description": "Class advisor" }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "faculty-portal-frontend",
+      "name": "Faculty Portal Frontend",
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": ["http://localhost:4173/*", "http://localhost:5173/*"],
+      "webOrigins": ["http://localhost:4173", "http://localhost:5173"],
+      "attributes": { "pkce.code.challenge.method": "S256" }
+    }
+  ],
+  "users": [
+    {
+      "username": "demo.faculty",
+      "enabled": true,
+      "firstName": "Ananya",
+      "lastName": "Krishnan",
+      "email": "a.krishnan@university.edu",
+      "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "demo123", "temporary": false }],
+      "realmRoles": ["FACULTY", "CLASS_ADVISOR"]
+    },
+    {
+      "username": "demo.admin",
+      "enabled": true,
+      "firstName": "Suresh",
+      "lastName": "Iyer",
+      "email": "s.iyer@university.edu",
+      "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "demo123", "temporary": false }],
+      "realmRoles": ["ADMIN"]
+    }
+  ]
+}

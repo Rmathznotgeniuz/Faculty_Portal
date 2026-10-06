@@ -1,0 +1,113 @@
+-- Deterministic local demo data. This migration is safe to run only once through Flyway.
+INSERT INTO departments (id, code, name)
+VALUES ('10000000-0000-0000-0000-000000000001', 'CSE', 'Computer Science')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO users (id, oidc_issuer, oidc_subject, employee_id, display_name, email)
+VALUES
+    ('20000000-0000-0000-0000-000000000001', 'http://localhost:8081/realms/faculty-portal', 'demo.admin', 'EMP-ADMIN', 'Suresh Iyer', 's.iyer@university.edu'),
+    ('20000000-0000-0000-0000-000000000002', 'http://localhost:8081/realms/faculty-portal', 'demo.faculty', 'EMP-1042', 'Dr. Ananya Krishnan', 'a.krishnan@university.edu')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO faculty (id, user_id, employee_id, department_id, designation_id, employment_status, joined_on)
+SELECT '30000000-0000-0000-0000-000000000001',
+       '20000000-0000-0000-0000-000000000002',
+       'EMP-1042',
+       department.id,
+       designation.id,
+       'ACTIVE',
+       DATE '2018-06-15'
+FROM departments department
+JOIN designations designation ON designation.code = 'ASSOCIATE_PROFESSOR'
+WHERE department.code = 'CSE'
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO user_roles (id, user_id, role_id, department_id, granted_by)
+SELECT '40000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', role.id, NULL, '20000000-0000-0000-0000-000000000001'
+FROM roles role WHERE role.code = 'ADMIN'
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO user_roles (id, user_id, role_id, department_id, granted_by)
+SELECT '40000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000002', role.id, department.id, '20000000-0000-0000-0000-000000000001'
+FROM roles role CROSS JOIN departments department
+WHERE role.code = 'FACULTY' AND department.code = 'CSE'
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO user_roles (id, user_id, role_id, department_id, granted_by)
+SELECT '40000000-0000-0000-0000-000000000003', '20000000-0000-0000-0000-000000000002', role.id, department.id, '20000000-0000-0000-0000-000000000001'
+FROM roles role CROSS JOIN departments department
+WHERE role.code = 'HOD' AND department.code = 'CSE'
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO academic_years (id, code, starts_on, ends_on)
+VALUES ('50000000-0000-0000-0000-000000000001', '2025-2026', DATE '2025-07-01', DATE '2026-06-30')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO academic_classes (id, department_id, academic_year_id, code, year_of_study, section)
+VALUES ('60000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', '50000000-0000-0000-0000-000000000001', 'CSE-3-A', 3, 'A')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO students (id, student_number, display_name)
+VALUES
+    ('70000000-0000-0000-0000-000000000001', 'CSE2025001', 'Aarav Sharma'),
+    ('70000000-0000-0000-0000-000000000002', 'CSE2025002', 'Diya Menon'),
+    ('70000000-0000-0000-0000-000000000003', 'CSE2025003', 'Kabir Nair')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO class_enrollments (id, student_id, academic_class_id, academic_year_id, valid_from)
+VALUES
+    ('71000000-0000-0000-0000-000000000001', '70000000-0000-0000-0000-000000000001', '60000000-0000-0000-0000-000000000001', '50000000-0000-0000-0000-000000000001', DATE '2025-07-01'),
+    ('71000000-0000-0000-0000-000000000002', '70000000-0000-0000-0000-000000000002', '60000000-0000-0000-0000-000000000001', '50000000-0000-0000-0000-000000000001', DATE '2025-07-01'),
+    ('71000000-0000-0000-0000-000000000003', '70000000-0000-0000-0000-000000000003', '60000000-0000-0000-0000-000000000001', '50000000-0000-0000-0000-000000000001', DATE '2025-07-01')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO subjects (id, department_id, code, name)
+VALUES
+    ('80000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 'CS301', 'Data Structures'),
+    ('80000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000001', 'CS305', 'Operating Systems')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO class_subjects (id, academic_class_id, subject_id, term)
+VALUES
+    ('81000000-0000-0000-0000-000000000001', '60000000-0000-0000-0000-000000000001', '80000000-0000-0000-0000-000000000001', 'Odd Semester'),
+    ('81000000-0000-0000-0000-000000000002', '60000000-0000-0000-0000-000000000001', '80000000-0000-0000-0000-000000000002', 'Odd Semester')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO faculty_subjects (id, faculty_id, class_subject_id, valid_from)
+VALUES
+    ('82000000-0000-0000-0000-000000000001', '30000000-0000-0000-0000-000000000001', '81000000-0000-0000-0000-000000000001', DATE '2025-07-01'),
+    ('82000000-0000-0000-0000-000000000002', '30000000-0000-0000-0000-000000000001', '81000000-0000-0000-0000-000000000002', DATE '2025-07-01')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO class_advisors (id, faculty_id, academic_class_id, valid_from, assigned_by)
+VALUES ('83000000-0000-0000-0000-000000000001', '30000000-0000-0000-0000-000000000001', '60000000-0000-0000-0000-000000000001', DATE '2025-07-01', '20000000-0000-0000-0000-000000000001')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO exams (id, name, academic_year_id, department_id, starts_on, ends_on, status)
+VALUES ('90000000-0000-0000-0000-000000000001', 'End Semester Examination', '50000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', DATE '2026-10-08', DATE '2026-10-14', 'SCHEDULED')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO exam_duties (id, exam_id, title, starts_at, ends_at, venue, capacity, eligibility_mode, selection_opens_at, selection_closes_at, status, created_by)
+VALUES
+    ('91000000-0000-0000-0000-000000000001', '90000000-0000-0000-0000-000000000001', 'Data Structures - Hall 1', TIMESTAMPTZ '2026-10-08 09:00:00+05:30', TIMESTAMPTZ '2026-10-08 12:00:00+05:30', 'Main Block - Hall 1', 8, 'ALL', TIMESTAMPTZ '2026-10-01 00:00:00+05:30', TIMESTAMPTZ '2026-10-07 23:59:00+05:30', 'OPEN', '20000000-0000-0000-0000-000000000001'),
+    ('91000000-0000-0000-0000-000000000002', '90000000-0000-0000-0000-000000000001', 'Operating Systems - Hall 3', TIMESTAMPTZ '2026-10-09 14:00:00+05:30', TIMESTAMPTZ '2026-10-09 17:00:00+05:30', 'Science Block - Hall 3', 6, 'ALL', TIMESTAMPTZ '2026-10-01 00:00:00+05:30', TIMESTAMPTZ '2026-10-08 23:59:00+05:30', 'OPEN', '20000000-0000-0000-0000-000000000001'),
+    ('91000000-0000-0000-0000-000000000003', '90000000-0000-0000-0000-000000000001', 'Computer Networks - Hall 2', TIMESTAMPTZ '2026-10-10 09:00:00+05:30', TIMESTAMPTZ '2026-10-10 12:00:00+05:30', 'Main Block - Hall 2', 8, 'ALL', TIMESTAMPTZ '2026-10-01 00:00:00+05:30', TIMESTAMPTZ '2026-10-09 23:59:00+05:30', 'OPEN', '20000000-0000-0000-0000-000000000001')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO faculty_duty_obligations (id, faculty_id, period_start, required_count, policy_id)
+SELECT '92000000-0000-0000-0000-000000000001', faculty.id, DATE '2026-10-01', 2, workload.id
+FROM faculty
+JOIN designation_workload workload ON workload.designation_id = faculty.designation_id AND workload.effective_from = DATE '2000-01-01'
+WHERE faculty.id = '30000000-0000-0000-0000-000000000001'
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO duty_assignments (id, exam_duty_id, faculty_id, obligation_id, assignment_type, assigned_by)
+VALUES
+    ('93000000-0000-0000-0000-000000000001', '91000000-0000-0000-0000-000000000001', '30000000-0000-0000-0000-000000000001', '92000000-0000-0000-0000-000000000001', 'ADMIN_ASSIGNED', '20000000-0000-0000-0000-000000000001')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO notifications (id, user_id, type, title, body, resource_type, resource_id)
+VALUES
+    ('94000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000002', 'EXAM_DUTY', 'Duty selection window open', 'Exam duty selection is open for the October examination period.', 'EXAM', '90000000-0000-0000-0000-000000000001'),
+    ('94000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000002', 'ACADEMIC', 'Marks published', 'Model examination marks for Data Structures are available.', 'SUBJECT', '80000000-0000-0000-0000-000000000001')
+ON CONFLICT (id) DO NOTHING;

@@ -1,0 +1,49 @@
+# Exam Duty Selection and Allocation
+
+## Policy model
+
+Monthly required duties are database policy, managed by ADMIN. `designation_workload` stores designation-specific counts with effective dates. The initially requested values (Professor 1, Associate Professor 2, Assistant Professor 6) are seed data for the database, not application constants. A `faculty_duty_obligations` row snapshots the applicable requirement for a faculty member and period when the cycle opens. A policy change therefore affects future cycles unless an authorized administrator explicitly adjusts an existing obligation with a reason and audit record.
+
+The period is the institution-defined calendar month unless configuration specifies otherwise. Define how duties spanning month boundaries count (recommended: count by duty start instant in the institution's timezone). Define leave/absence source and approved exemptions before enabling automation; until integrated, an administrator may enter approved availability/exemption data with audit.
+
+## Self-selection transaction
+
+1. Authenticate faculty and resolve their active profile, designation, department, and period obligation from the database.
+2. Begin transaction. Lock the obligation row, then lock the requested duty row, following the same lock order in all assignment paths.
+3. Recheck active user/faculty status; duty status and selection window against database time; department/designation eligibility; active assignment uniqueness; duty capacity; schedule conflict against all active assignments; and remaining quota.
+4. Insert `duty_assignments` with `SELF_SELECTED`, active status, and obligation reference. Update/reconcile duty status to `FULL` if appropriate and persist audit/notification/outbox records transactionally.
+5. Commit. Return updated quota and assignment. If an invariant fails, rollback and return a stable conflict/validation error.
+
+The availability screen is advisory. The transaction rechecks every condition. A unique partial index rejects duplicate active assignments even if application checks race. Serialize quota updates by locking the obligation row; serialize capacity updates by locking the duty row. All admin and worker paths use the same assignment service and lock order. Retry recognized serialization/deadlock failures only a bounded number of times; never retry business conflicts as though successful.
+
+## Automatic allocation algorithm
+
+Run after a selection cycle closes, with a configurable grace interval if required. Claim each `(period, faculty obligation)` job idempotently. Process obligations with outstanding requirement; the worker can be horizontally scaled using database claims/`SKIP LOCKED` or a job coordination mechanism, but PostgreSQL remains the authority. For each obligation:
+
+1. Compute `remaining = max(0, required_count - count(active qualifying assignments))`. Qualifying assignments belong to this obligation's relevant period and have an assignment status considered active by the authoritative database/API contract. Exclude cancelled and any other non-qualifying assignments. Count them from authoritative PostgreSQL state. Do nothing when zero or the obligation is exempt/finalized.
+2. Load the faculty's effective department/designation, approved unavailability/leave, and candidate duties. A duty is eligible for automatic allocation only when its lifecycle state permits assignment, the applicable automatic-assignment policy permits it, capacity is available, faculty eligibility is satisfied, and time/conflict constraints are satisfied. The self-selection window being closed does not by itself make a duty unavailable for automatic allocation; a duty may remain eligible after that window closes when its lifecycle state and automatic-assignment policy permit assignment. Exclude duties that are cancelled, ineligible, past, or otherwise prohibited. Treat `FULL` only as a derived availability hint during discovery; determine actual capacity from PostgreSQL under the duty row lock before accepting or rejecting an assignment.
+3. Exclude duties that overlap the faculty's active assignment intervals. Optionally apply a configurable rest gap and maximum consecutive-duty policy. Define “consecutive” as duties on adjacent dates or within configured minimum rest hours; never encode it as a hidden constant.
+4. Rank candidate duties using deterministic scoring: (a) eligibility and hard constraints, (b) fewest assignments in the same period/current allocation batch, (c) lower workload relative to eligible peers, (d) avoid adjacent-day or short-rest assignments, (e) earliest duty time, then stable duty UUID tie-break. This provides reproducible, explainable choices without pretending to solve a global optimization problem.
+5. For each candidate, call the shared assignment transaction using `AUTO_ASSIGNED`. It locks obligation then duty, rechecks authorization, lifecycle state and automatic-assignment policy, capacity, conflicts, current eligibility, and remaining quota, then commits one assignment. Capacity is determined from authoritative PostgreSQL assignment state while holding the duty row lock; a stale `FULL` state is not the capacity guard. If another worker takes the final slot, skip and continue. Candidate list is refreshed or bounded-retried after conflict.
+6. Stop at zero remaining or no eligible capacity. Record assigned count, unfilled count, reason codes (for example no eligible duty, all full, conflict/leave), attempt count, and completion state. Notify faculty of assignments and authorized admins/HODs of unfilled obligations without exposing unrelated student data.
+7. Finalize an obligation only under an explicit policy/state condition: the required obligation has been satisfied; the allocation window has been exhausted and institutional policy permits unresolved obligations to be finalized; or an authorized administrator explicitly exempts/closes the obligation with the required reason and audit record, using the existing obligation state as policy dictates. A worker must not finalize an obligation merely because one allocation attempt found no candidate. Unfilled obligations remain visible for authorized manual resolution whenever policy requires further action and can be safely rerun after capacity or eligibility changes.
+
+A greedy workload-balanced algorithm is appropriate for the initial modular monolith and is explainable. If fairness criteria require global optimality, evaluate min-cost matching/flow as a later change with explicit policy and scale tests; do not silently substitute an opaque optimizer.
+
+## Admin assignment and overrides
+
+Manual assignments use `ADMIN_ASSIGNED`, actor and reason, and the same authorization, eligibility, capacity, uniqueness, and conflict checks. An explicit administrative override may permit an assignment that would otherwise exceed the faculty obligation's remaining quota only when the configured institutional policy permits that override and the administrator supplies the required reason. The override must not bypass duty capacity, duplicate-assignment protection, authorization, or schedule-conflict checks. A schedule-conflict exception is permitted only if a separately approved emergency-conflict policy explicitly allows it; that exception requires its own explicit permission, confirmation, audit event, and institutional policy. Cancellations preserve assignment history and trigger obligation recount/reconciliation.
+
+## Status and edge-case policy
+
+- `OPEN`, `FULL`, `CLOSED`, `CANCELLED` are externally visible duty states and are unchanged. Opening/closing windows and duty lifecycle state are distinct. `FULL` is derived from the authoritative PostgreSQL active-assignment count versus duty capacity. It may be recalculated/reconciled when assignments are created or cancelled, or during controlled reconciliation. A stale `FULL` state is never the sole capacity guard: before accepting an assignment, the authoritative transaction acquires the duty row lock and determines actual capacity from PostgreSQL state.
+- Concurrent last-slot selections: duty-row lock plus count-and-insert transaction ensures at most one request consumes the final available slot. Assignment uniqueness independently blocks duplicate faculty-duty rows.
+- Concurrent selections by one faculty for different duties: obligation-row lock serializes quota checks; schedule-conflict checks run after acquiring it.
+- Duty edit after assignment: prohibit lowering capacity below active assignment count and prohibit time edits that would create conflicts without a controlled revalidation workflow.
+- Leave arriving after assignment: define cancellation/reallocation behavior with institutional policy; never silently delete/reassign an audited assignment.
+- Designation/department changes: use effective-dated faculty history or snapshot relevant policy inputs on the obligation. Define whether the period uses status at cycle opening; recommended: snapshot at cycle opening, with explicit audited correction.
+- Allocation failures: idempotent job key, transaction per assignment, bounded retries, durable run status, operational alert, and safe rerun. Do not wrap an entire large period in one transaction.
+
+## Audit and metrics
+
+Every self/admin/automatic assignment stores its assignment type and actor where applicable. Audit events capture duty and faculty identifiers, obligation/period, outcome, reason/override, and timestamp. Metrics include obligations due, assigned, unfilled by reason, conflict retries, capacity conflicts, duration, and job failures; labels must not contain faculty or student identifiers. Admin/HOD reports follow their authorization scope.
